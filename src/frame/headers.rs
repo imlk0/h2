@@ -911,7 +911,12 @@ impl HeaderBlock {
                         if headers_size < max_header_list_size {
                             self.field_size +=
                                 decoded_header_size(name.as_str().len(), value.len());
-                            self.fields.append(name, value);
+                            if let Err(_) = self.fields.try_append(name, value) {
+                                // HeaderMap capacity exceeded — treat as over-size
+                                // so the stream is rejected downstream (RST_STREAM / 431)
+                                // instead of panicking on the 24,577th unique header.
+                                self.is_over_size = true;
+                            }
                         } else if !self.is_over_size {
                             tracing::trace!("load_hpack; header list size over max");
                             self.is_over_size = true;
